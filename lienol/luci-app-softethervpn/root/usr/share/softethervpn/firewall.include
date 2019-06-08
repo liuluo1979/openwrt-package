@@ -1,5 +1,25 @@
 #!/bin/sh
 
+CONFIG=softethervpn
+
+get_config()
+{
+	config_get_bool enable $1 enable 0
+}
+
+uci_get_by_type() {
+	local index=0
+	if [ -n $4 ]; then
+		index=$4
+	fi
+	local ret=$(uci get $CONFIG.@$1[$index].$2 2>/dev/null)
+	echo ${ret:=$3}
+}
+
+l2tp=$(uci_get_by_type softether l2tp)
+openvpn=$(uci_get_by_type softether openvpn)
+sstp=$(uci_get_by_type softether sstp)
+
 openvpnport=$(cat /usr/libexec/softethervpn/vpn_server.config 2>/dev/null|grep OpenVPN_UdpPortList | awk -F " " '{print $3}')
 [ -z "$openvpnport" ] && openvpnport=1194
 iptables -D INPUT -p udp -m multiport --dports 500,1701,4500 -m comment --comment "Rule For SoftEther VPN Server" -j ACCEPT 2>/dev/null
@@ -12,10 +32,16 @@ iptables -D INPUT -p tcp --dport 992 -m comment --comment "Rule For SoftEther VP
 
 enable=$(uci get softethervpn.@softether[0].enable)
 if [ $enable -eq 1 ]; then
-	iptables -I INPUT -p udp -m multiport --dports 500,1701,4500 -m comment --comment "Rule For SoftEther VPN Server" -j ACCEPT 2>/dev/null
-	iptables -I INPUT -p udp --dport $openvpnport -m comment --comment "Rule For SoftEther VPN Server" -j ACCEPT
-	iptables -I INPUT -p tcp --dport $openvpnport -m comment --comment "Rule For SoftEther VPN Server" -j ACCEPT
-	iptables -I INPUT -p tcp --dport 443 -m comment --comment "Rule For SoftEther VPN Server" -j ACCEPT
+	if [ "$l2tp" = "1" ];then
+		iptables -I INPUT -p udp -m multiport --dports 500,1701,4500 -m comment --comment "Rule For SoftEther VPN Server" -j ACCEPT 2>/dev/null
+	fi
+	if [ "$openvpn" = "1" ];then
+		iptables -I INPUT -p udp --dport $openvpnport -m comment --comment "Rule For SoftEther VPN Server" -j ACCEPT
+		iptables -I INPUT -p tcp --dport $openvpnport -m comment --comment "Rule For SoftEther VPN Server" -j ACCEPT
+	fi 
+	if [ "$sstp" = "1" ];then
+		iptables -I INPUT -p tcp --dport 443 -m comment --comment "Rule For SoftEther VPN Server" -j ACCEPT
+	fi
 	iptables -I INPUT -p tcp --dport 5555 -m comment --comment "Rule For SoftEther VPN Server" -j ACCEPT
 	iptables -I INPUT -p tcp --dport 8888 -m comment --comment "Rule For SoftEther VPN Server" -j ACCEPT
 	iptables -I INPUT -p tcp --dport 992 -m comment --comment "Rule For SoftEther VPN Server" -j ACCEPT
